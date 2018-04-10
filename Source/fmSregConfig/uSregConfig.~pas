@@ -1,0 +1,79 @@
+unit uSregConfig;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, Buttons, ExtCtrls,iniFiles;
+
+type
+  TfmsRegTConfig = class(TForm)
+    Bevel1: TBevel;
+    sb_Save: TSpeedButton;
+    sbCancel: TSpeedButton;
+    chk_DeviceSearch: TCheckBox;
+    chk_RealRegist: TCheckBox;
+    chk_MacView: TCheckBox;
+    chk_EventSave: TCheckBox;
+    procedure sbCancelClick(Sender: TObject);
+    procedure sb_SaveClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  fmsRegTConfig: TfmsRegTConfig;
+
+implementation
+uses
+  uCommon;
+
+{$R *.dfm}
+
+procedure TfmsRegTConfig.sbCancelClick(Sender: TObject);
+begin
+  Close;
+end;
+
+procedure TfmsRegTConfig.sb_SaveClick(Sender: TObject);
+var
+  ini_fun : TiniFile;
+begin
+  ini_fun := TiniFile.Create(ExtractFileDir(Application.ExeName) + '\ztcs.INI');
+
+  G_bDeviceSearch := chk_DeviceSearch.Checked;
+  if chk_DeviceSearch.Checked then
+    ini_fun.WriteString('Config','DEVICESEARCH','TRUE')
+  else ini_fun.WriteString('Config','DEVICESEARCH','FALSE');
+
+  G_bRealRegist := chk_RealRegist.Checked;
+  if chk_DeviceSearch.Checked then
+    ini_fun.WriteString('Config','REALREGIST','TRUE')
+  else ini_fun.WriteString('Config','REALREGIST','FALSE');
+
+  G_bMacView := chk_MacView.Checked;
+  if chk_MacView.Checked then
+    ini_fun.WriteString('Config','MACVIEW','TRUE')
+  else ini_fun.WriteString('Config','MACVIEW','FALSE');
+
+  G_bEventControlerSave := chk_EventSave.Checked;
+  if chk_EventSave.Checked then
+    ini_fun.WriteString('Config','EventControlerSave','TRUE')
+  else ini_fun.WriteString('Config','EventControlerSave','FALSE');
+  
+  ini_fun.Free;
+  Close;
+
+end;
+
+procedure TfmsRegTConfig.FormCreate(Sender: TObject);
+begin
+  chk_DeviceSearch.Checked := G_bDeviceSearch;
+  chk_RealRegist.Checked := G_bRealRegist;
+  chk_MacView.Checked := G_bMacView ;
+end;
+
+end.

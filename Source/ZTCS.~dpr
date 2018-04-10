@@ -1,0 +1,53 @@
+program ZTCS;
+
+uses
+  ShareMem,
+  Forms,
+  uMain in 'fmMain\uMain.pas' {fmMain},
+  uSubForm in '..\Lib\uSubForm.pas' {fmASubForm},
+  uSocket in '..\Lib\uSocket.pas' {dmSocket: TDataModule},
+  uCommon in '..\Lib\uCommon.pas' {dmCommon: TDataModule},
+  dllFunction in '..\Lib\dllFunction.pas',
+  uCheckValiable in '..\Lib\uCheckValiable.pas',
+  uUtil in '..\Lib\uUtil.pas',
+  uProgConfig in 'fmProgConfig\uProgConfig.pas' {fmProgConfig},
+  uNetConfig in 'fmNetConfig\uNetConfig.pas' {fmNetConfig},
+  uLogin in 'fmLogin\uLogin.pas' {fmLogin},
+  uPWConfig in 'fmPWConfig\uPWConfig.pas' {fmPWConfig},
+  uConnectStatusMsg in 'fmConnectStatusMsg\uConnectStatusMsg.pas' {fmConnectStatusMsg},
+  udmDataBase in '..\Lib\udmDataBase.pas' {dmDataBase: TDataModule},
+  uCurrentDeviceSetting in 'fmCurrentDeviceSetting\uCurrentDeviceSetting.pas' {fmCurrentDeviceSetting},
+  uSregConfig in 'fmSregConfig\uSregConfig.pas' {fmsRegTConfig},
+  uCardReg in 'fmCardReg\uCardReg.pas' {fmCardReg},
+  uHoliday in 'fmHoliday\uHoliday.pas' {Form_Holiday},
+  uWatchCode in 'fmWatchCode\uWatchCode.pas' {fmWatchCode},
+  uAlarmEvent in 'fmAlarmEvent\uAlarmEvent.pas' {fmAlarmEvent},
+  uCardEvent in 'fmCardEvent\uCardEvent.pas' {fmCardEvent},
+  uSchedule in 'fmSchedule\uSchedule.pas' {fmSchedule},
+  uFTPFirmware in 'fmFTPFirmware\uFTPFirmware.pas' {fmFTPFirmware},
+  FileInfo in '..\Lib\FileInfo.pas',
+  uFirmware in 'fmFirmware\uFirmware.pas' {fmFirmware},
+  uLinkusStateCheck in 'fmLinkusstatecheck\uLinkusStateCheck.pas' {fmLinkusStateCheck},
+  uCdmaStateCheck in 'fmCdmaStateCheck\uCdmaStateCheck.pas' {fmCdmaStateCheck},
+  uDVRStateCheck in 'fmDVRStateCheck\uDVRStateCheck.pas' {fmDVRStateCheck},
+  uCardReaderVersion in 'fmCardReaderVersion\uCardReaderVersion.pas' {fmCardReaderVersion},
+  uDeviceVersion in 'fmDeviceVersion\uDeviceVersion.pas' {fmDeviceVersion},
+  u812Firmware in 'fm812Firmware\u812Firmware.pas' {fm812Firmware},
+  systeminfos in '..\Lib\systeminfos.pas',
+  uCopy in 'fmCopy\uCopy.pas' {fmCopy},
+  uCurrentState in '실시간송수신현황조회\uCurrentState.pas' {fmCurrentState},
+  uAccessEvent in 'fmAccessEvent\uAccessEvent.pas' {fmAccessEvent},
+  udmDBBackupAndRecovery in '..\Lib\udmDBBackupAndRecovery.pas' {dmDBBackupAndRecovery: TDataModule};
+
+{$R *.res}
+
+begin
+  Application.Initialize;
+  Application.Title := '제론통합설정프로그램';
+  Application.CreateForm(TdmDataBase, dmDataBase);
+  Application.CreateForm(TdmSocket, dmSocket);
+  Application.CreateForm(TdmCommon, dmCommon);
+  Application.CreateForm(TfmMain, fmMain);
+  Application.CreateForm(TdmDBBackupAndRecovery, dmDBBackupAndRecovery);
+  Application.Run;
+end.

@@ -1,0 +1,100 @@
+unit uCheckValiable;
+
+interface
+const
+  ALARMCONTROL = 1;           //알람제어
+  ALARMSTATECHECK = 2;        //방범상태체크
+  ALERTLAMPSIREN = 3;             //비상알람시램프사이렌
+  ALERTLAMPTIME = 4;             //
+  ALERTSIRENTIME = 5;             //
+  ARMDSCHECK = 6;            //경계시 DS체크
+  ARMRELAYTYPE = 7;          //경계시 릴레이타입
+  CARDDOWNLOADACK = 8;          //카드다운로드
+  CARDLIST = 10;              //등록카드리스트
+  CARDLISTCANCEL = 11;        //카드리스트 조회 취소
+  CARDREADERCALLTIME = 12;            //카드리더 통화시간
+  CARDREADERINFO = 13;        //카드리더 정보
+  CARDREADERSOUNDUSE = 14;    //카드리더 음성송출유무
+  CARDREADERTELNUMBERCHECK = 15;            //카드리더 전화번호 체크
+  CARDREADERTYPE = 16;        //카드리더 타입
+  CARDREADERVERSION = 17;     //카드리더 버젼정보
+  conARMAREAUSE = 18;          //방범구역 사용 유무
+  conCARDREADERSTATE = 19;     //카드리더 통신상태
+  conCARDRegCardCnt = 20;              //등록카드리스트
+  conCCCInfoCHECK = 21;           //CCC 정보 체크
+  conCCCStartTimeCheck = 22;
+  conCCCTimeIntervalCheck = 23;
+  conDDNSQueryServer = 24;
+  conDDNSServer = 25;
+  conDOORARMAREA = 26;          //출입문 방범구역
+  conDOORDSCHECKTIME = 27;      //데드볼트시 문검사 수행시 검사 시간
+  conDOORDSCHECKUSE = 28;      //데드볼트시 문검사 항상수행 여부
+  conDoorTimeCodeUse = 29;     //타임코드 사용유무
+  conExtentionVERSION = 30; //존 확장기 버젼정보
+  conEventServer = 31;
+  conKTTMUXID = 32;               //Mux ID
+  conLineCheckStart = 33;
+  conLineCheckTime = 34;
+  conLineShortCheck = 35;      //선로 쇼트 체크
+  conMaxCardCountCheck = 36;      //최종 카드번지
+  conJaeJungDlayUseCheck = 37;      //재중 딜레이 체크
+  conJavaraArmClose = 38;      //자바라경계시닫힘
+  conJavaraAutoClose = 40;      //자바라자동닫힘
+  conJavaraSchedule = 41;      //자바라 스케줄
+  conJavaraStopTime = 42;      //자바라스톱시간
+  conPrimaryKTTType = 43;         //주통신 타입
+  conPoliceTel = 44;
+  conServerCardNF = 45;
+  conTCPServerPort = 46;
+  conTimeCode = 47;
+  conRegisterClear = 48;      //메모리지움 제어
+  conZoneExtensionPortInfo = 49;   //감지기존 설정
+  conZoneExtensionUse = 50;      //존확장기 사용유무
+  conZONEEXTENTIONNETWORK = 51;     //존확장기 통신상태
+  conZONEUSEDREMOTECONTROL = 52;     //존확장기 통신상태
+  DEVICECODECHECK = 53;        //기기코드 조회
+  DEVICERESET = 54;           //컨트롤러 리셋
+  DEVICETYPECHECK = 55;        //ECU/ICU Check
+  DEVICEVERSIONCHECK = 56;     //기기버젼체크
+  DOORCONTROL = 57;           //출입문제어
+  DOORSTATECHECK = 58;        //출입문상태체크
+  DOORSYSTEMCHECK = 60;        //출입문시스템체크
+  DVRInfoCHECK = 61;            //DVR정보
+  ECUSTATE = 62;              //확장기 통신상태
+  FIRERECOVERY = 63;          //화재복구
+  FTPFUNCTION = 64;               //FTP기능 체크
+  HOLIDAY = 65;               //특정일
+  IDCHECK = 66;                //ID Check
+  KTTRINGCOUNT = 67;             //관제데코더전화번호
+  KTTSYSTEMID = 68;           //관제시스템아이디
+  KTTTELNUM = 70;             //관제데코더전화번호
+  LOCKSTATECHECK = 71;        //락 상태 체크
+  MACINFO = 72;
+  MAINTOLOCALARM = 73;            //메인에서 로컬 경계시키는 기능
+  MAINFROMLOCALARM = 74;          //로컬이 경계 된 후 메인이 경계 되는 기능
+  PORTSTATE = 75;             //현재 포트의 쇼트/단선체크
+  RELAY2TYPE = 76;                //812 출입문 2 사용여부
+  SCHEDULE = 77;              //스케줄 조회
+  SERIALWIZNET = 78;           //랜정보
+  SYSINFOCHECK = 80;           //시스템정보
+  SYSTEMFUNCTION = 81;            //기기기능 체크
+  TIME = 82;                  //시간
+  USECDMACHECK = 83;          //CDMA사용 유무 체크
+  USEDEVICECHECK = 84;         //사용확장기체크
+  USEDVRCHECK = 85;            //DVR사용 유무 체크
+  WIZNETMODULECHECK = 86;     //랜모듈 정보
+  ZONESENSECHECK = 87;        //알람 상태 체크
+
+
+var
+  G_bResponseChecking : Boolean; //현재 응답 대기 중인지 여부 - 대기중이면 패킷 송신을 보류 하자
+  G_bDeviceResponse: Array [0..100] of Boolean; //기기 설정 정보 응답 여부
+  G_bCardReaderResponse: Array [0..512] of Boolean; //카드리더 정보 응답 여부
+  G_bCardReaderVersionResponse: Array [0..512] of Boolean; //카드리더 정보 응답 여부
+  G_bExtentionVersionResponse: Array [0..512] of Boolean; //존확장기 정보 응답 여부
+  G_bPortResponse: Array [0..768] of Boolean; //포트 정보 응답 여부
+  G_stDeviceType: Array [0..100] of string; //기기 타입
+
+implementation
+
+end.

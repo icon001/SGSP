@@ -1,0 +1,1279 @@
+unit uFTPFirmware;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, IdBaseComponent, IdComponent, IdTCPServer, IdFTPServer,
+  StdCtrls, RzLstBox, Gauges, Buttons, RzButton, RzLabel,
+  IdFTPList,IdGlobal,IdHashCRC,iniFiles,FileInfo, LMDCustomComponent,
+  LMDIniCtrl, RzCmboBx, ExtCtrls, RzPanel, RzRadGrp;
+
+type
+  TFirmwareDownInfo = Record
+    Version: string;    //Version
+    FMM:     string;    //Flash Memory Map
+    FSC:     String;    //Flash Start Command
+    FWFN:    String;    //Flash Writer File Name
+    FDFN:    String;    //Flash Data File Name
+    CMDCODE: String;    //FX##(##:00 이거나 CMDCODE)
+    DEVICETYPE : string;
+  end;
+
+  TfmFTPFirmware = class(TForm)
+    GroupBox1: TGroupBox;
+    RzLabel41: TRzLabel;
+    RzLabel1: TRzLabel;
+    RzLabel2: TRzLabel;
+    btnClose: TRzBitBtn;
+    btnFirmwareUpdate: TRzBitBtn;
+    ed_FirmwareFile: TEdit;
+    btn_FileSearch: TBitBtn;
+    btn_FirmwareCancel: TRzBitBtn;
+    ed_pcip: TEdit;
+    ed_pcPort: TEdit;
+    GroupBox2: TGroupBox;
+    ProgressBar1: TGauge;
+    ListBox_DownLoadInfo: TRzListBox;
+    IdFTPServer: TIdFTPServer;
+    OpenDialog1: TOpenDialog;
+    btn_FirmWareChange: TRzBitBtn;
+    RzOpenDialog1: TOpenDialog;
+    LMDIniCtrl2: TLMDIniCtrl;
+    Group_811: TRzCheckGroup;
+    procedure btnCloseClick(Sender: TObject);
+    procedure btn_FirmWareChangeClick(Sender: TObject);
+    procedure btn_FileSearchClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure btn_FirmwareCancelClick(Sender: TObject);
+    procedure btnFirmwareUpdateClick(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+    procedure ed_pcPortChange(Sender: TObject);
+    procedure cmb_EcuChange(Sender: TObject);
+    procedure Group_811Change(Sender: TObject; Index: Integer;
+      NewState: TCheckBoxState);
+  private
+    procedure IdFTPServer1UserLogin( ASender: TIdFTPServerThread; const AUsername, APassword: string; var AAuthenticated: Boolean ) ;
+    procedure IdFTPServer1ListDirectory( ASender: TIdFTPServerThread; const APath: string; ADirectoryListing: TIdFTPListItems ) ;
+    procedure IdFTPServer1RenameFile( ASender: TIdFTPServerThread; const ARenameFromFile, ARenameToFile: string ) ;
+    procedure IdFTPServer1RetrieveFile( ASender: TIdFTPServerThread; const AFilename: string; var VStream: TStream ) ;
+    procedure IdFTPServer1StoreFile( ASender: TIdFTPServerThread; const AFilename: string; AAppend: Boolean; var VStream: TStream ) ;
+    procedure IdFTPServer1RemoveDirectory( ASender: TIdFTPServerThread; var VDirectory: string ) ;
+    procedure IdFTPServer1MakeDirectory( ASender: TIdFTPServerThread; var VDirectory: string ) ;
+    procedure IdFTPServer1GetFileSize( ASender: TIdFTPServerThread; const AFilename: string; var VFileSize: Int64 ) ;
+    procedure IdFTPServer1DeleteFile( ASender: TIdFTPServerThread; const APathname: string ) ;
+    procedure IdFTPServer1ChangeDirectory( ASender: TIdFTPServerThread; var VDirectory: string ) ;
+    procedure IdFTPServer1CommandXCRC( ASender: TIdCommand ) ;
+    procedure IdFTPServer1Connect( AThread: TIdPeerThread ) ;
+    procedure IdFTPServer1DisConnect( AThread: TIdPeerThread ) ;
+    procedure FTPSERVERStart();
+  public
+    function TransLatePath( const APathname, homeDir: string ) : string;
+    procedure GageMonitor(aEcuID,aPacketData:string);
+    procedure LoadEcu;
+  private
+    L_stftpsendfilename : string;
+    L_stftpsendfilesize : string;
+    L_stlocalftproot : string;
+    L_bClose  : Boolean;
+    L_bBroadCaset : Boolean;
+    FTPSockList : TStringList;
+    SockNo : integer;
+    { Private declarations }
+    Procedure LoadINI_firmwareInfo;
+    procedure Write_ListBox_DownLoadInfo(aData: String);
+    procedure FileLoad(aFileName:string);
+    procedure DownLoadComplete;
+    procedure Ecu_GroupCreate;
+    function Get811ControlerNum(CheckGroup:TRZCheckGroup;var a811ControlerNum:string):integer;
+  public
+    { Public declarations }
+    L_bFirmWareChange : Boolean;
+    L_stSelectEcuID : string;
+    L_bIsDownLoad : Boolean;
+    procedure FirmwareProcess(aEcuID,aPacketData:string);
+    procedure FirmwareProcess2(aEcuID,aPacketData:string);
+    Procedure DownloadFMM(aEcuID :string);
+    Procedure SendCancelRomUpDate(aEcuID:String);
+    Procedure SendFPData(aEcuID: String; aNo:Integer;aMode:string);
+    Procedure SendFPBineryData(aEcuID: String; aNo,aSize:Integer;aMode:string);
+    Procedure SendFDData(aEcuID: String; aNo:Integer;aMode:string);
+    Procedure SendFDBineryData(aEcuID: String; aNo,aSize:Integer;aMode:string);
+    Procedure SendFSC(aEcuID :string);
+
+    procedure ProcessKTT811FTPFirmWareDownloadComplete(aEcuID:string);
+  end;
+
+var
+  fmFTPFirmware: TfmFTPFirmware;
+  aFI: TFirmwareDownInfo;
+
+  IsFirmwareDownLoad: Boolean;
+
+  ROM_FlashWrite: TStringList;
+  ROM_FlashData : TStringList;
+  ROM_BineryFlashWrite : PChar;
+  ROM_BineryFlashData : PChar;
+
+implementation
+uses
+  uMain,
+  uSocket,
+  uUtil,
+  dllFunction,
+  uCommon;
+{$R *.dfm}
+
+function SlashToBackSlash( const str: string ) : string;
+var
+  a: dword;
+begin
+  result := str;
+  for a := 1 to length( result ) do
+    if result[a] = '/' then
+      result[a] := '\';
+end;
+
+function GetSizeOfFile( const APathname: string ) : int64;
+begin
+  result := FileSizeByName( APathname ) ;
+end;
+
+function CalculateCRC( const path: string ) : string;
+var
+  f: tfilestream;
+  value: dword;
+  IdHashCRC32: TIdHashCRC32;
+begin
+  IdHashCRC32 := nil;
+  f := nil;
+  try
+    IdHashCRC32 := TIdHashCRC32.create;
+    f := TFileStream.create( path, fmOpenRead or fmShareDenyWrite ) ;
+    value := IdHashCRC32.HashValue( f ) ;
+    result := inttohex( value, 8 ) ;
+  finally
+    f.free;
+    IdHashCRC32.free;
+  end;
+end;
+
+function GetNewDirectory( old, action: string ) : string;
+var
+  a: integer;
+begin
+  if action = '../' then
+  begin
+    if old = '/' then
+    begin
+      result := old;
+      exit;
+    end;
+    a := length( old ) - 1;
+    while ( old[a] <> '\' ) and ( old[a] <> '/' ) do
+      dec( a ) ;
+    result := copy( old, 1, a ) ;
+    exit;
+  end;
+  if ( action[1] = '/' ) or ( action[1] = '\' ) then
+    result := action
+  else
+    result := old + action;
+end;
+
+procedure TfmFTPFirmware.btnCloseClick(Sender: TObject);
+var
+  i : integer;
+begin
+  if L_bIsDownLoad then
+  begin
+    if Application.MessageBox('FirmWare Download중입니다. 종료 하시겠습니까?','주의',MB_OKCANCEL) = IDCANCEL then Exit;
+    btn_FirmwareCancelClick(self);
+    Delay(1000);
+  end;
+  
+  if FTPSockList.Count > 0 then
+  begin
+    for i := FTPSockList.Count - 1 downto 0 do
+    begin
+      Try
+        TIdPeerThread(FTPSockList.Objects[i]).Stop;
+      Except
+        continue;
+      end;
+    end;
+  end;
+
+  Try
+    if IdFTPServer.Active then IdFTPServer.Active := False;
+  Except
+  End;
+
+  L_bClose := True;
+  Close;
+end;
+
+procedure TfmFTPFirmware.btn_FirmWareChangeClick(Sender: TObject);
+begin
+  L_bFirmWareChange := True;
+  L_bClose := True;
+  Close;
+end;
+
+procedure TfmFTPFirmware.btn_FileSearchClick(Sender: TObject);
+var
+  st: string;
+  ini_fun : TiniFile;
+begin
+
+  RzOpenDialog1.Title:= '펌웨어 설정 파일 찾기';
+  RzOpenDialog1.DefaultExt:= 'ini';
+  RzOpenDialog1.Filter := 'INI files (*.ini)|*.INI';
+  if RzOpenDialog1.Execute then
+  begin
+    st:= RzOpenDialog1.FileName;
+    ed_FirmwareFile.Text:= st;
+    ed_FirmwareFile.SelectAll;
+    FileLoad(st);
+
+    ini_fun := TiniFile.Create(ExtractFileDir(Application.ExeName) + '\ztcs.INI');
+    ini_fun.WriteString('FirmWare','FileName',ed_FirmwareFile.Text);
+    ini_fun.Free;
+
+  end;
+
+end;
+
+procedure TfmFTPFirmware.FormCreate(Sender: TObject);
+begin
+  IdFTPServer := tIdFTPServer.create( nil ) ;
+  IdFTPServer.DefaultPort := 21;
+  IdFTPServer.AllowAnonymousLogin := False;
+  IdFTPServer.EmulateSystem := ftpsUNIX;
+  IdFTPServer.HelpReply.text := 'Help is not implemented';
+  IdFTPServer.OnChangeDirectory := IdFTPServer1ChangeDirectory;
+//  IdFTPServer.OnChangeDirectory := IdFTPServer1ChangeDirectory;
+  IdFTPServer.OnGetFileSize := IdFTPServer1GetFileSize;
+  IdFTPServer.OnListDirectory := IdFTPServer1ListDirectory;
+  IdFTPServer.OnUserLogin := IdFTPServer1UserLogin;
+  IdFTPServer.OnRenameFile := IdFTPServer1RenameFile;
+  IdFTPServer.OnDeleteFile := IdFTPServer1DeleteFile;
+  IdFTPServer.OnRetrieveFile := IdFTPServer1RetrieveFile;
+  IdFTPServer.OnStoreFile := IdFTPServer1StoreFile;
+  IdFTPServer.OnMakeDirectory := IdFTPServer1MakeDirectory;
+  IdFTPServer.OnRemoveDirectory := IdFTPServer1RemoveDirectory;
+
+  IdFTPServer.Greeting.NumericCode := 220;
+  IdFTPServer.OnDisconnect := IdFTPServer1DisConnect;
+  IdFTPServer.OnConnect := IdFTPServer1Connect;
+  with IdFTPServer.CommandHandlers.add do
+  begin
+    Command := 'XCRC';
+    OnCommand := IdFTPServer1CommandXCRC;
+  end;
+
+  ROM_FlashWrite:= TStringList.Create;
+  ROM_FlashData := TStringList.Create;
+  FTPSockList := TStringList.Create;
+  FTPSockList.Clear;
+
+  ROM_BineryFlashWrite := nil;
+  ROM_BineryFlashData := nil;
+
+  IsFirmwareDownLoad := False;
+  L_bIsDownLoad := False;
+  L_bClose := False;
+
+  SockNo := 0;
+
+  LoadEcu;
+
+end;
+
+procedure TfmFTPFirmware.FormClose(Sender: TObject;
+  var Action: TCloseAction);
+begin
+  fmMain.L_bFTPFirmWareSendShow := False;
+end;
+
+procedure TfmFTPFirmware.btn_FirmwareCancelClick(Sender: TObject);
+begin
+  dmSocket.DirectSendPacket(L_stSelectEcuID,'R','fp00');
+  DownLoadComplete;
+end;
+
+procedure TfmFTPFirmware.btnFirmwareUpdateClick(Sender: TObject);
+var
+  stData : string;
+  stFileName : string;
+  stDeviceID : string;
+  nEcu : integer;
+  st811ControlerNum : string;
+  nIndex : integer;
+begin
+  if Application.MessageBox('프로그램업데이트시 설정정보가 지워질수 있습니다. 계속 하시겠습니까?','주의',MB_OKCANCEL) = IDCANCEL then Exit;
+  stFileName := ed_FirmwareFile.Text;
+  if Not FileExists(stFileName) then
+  begin
+    showmessage('펌웨어 파일을 선택 하세요.');
+    Exit;
+  end;
+  if Not isDigit(ed_pcPort.Text) then
+  begin
+    showmessage('포트를 확인하세요.');
+    Exit;
+  end;
+  if Not dmSocket.SocketConnected then
+  begin
+    showmessage('통신연결이 안되었습니다.');
+    Exit;
+  end;
+  nEcu := Get811ControlerNum(Group_811,st811ControlerNum);
+  if nEcu < 0 then
+  begin
+    showmessage('펌웨어 업데이트 할 컨트롤러를 선택하세요.');
+    Exit;
+  end;
+
+  if nEcu = 99 then
+  begin
+    stData := 'fp10'; //브로드캐스트
+    if aFI.DEVICETYPE = 'MCU110' then stData := stData + 'mMCU110';
+  end else
+  begin
+    stData := 'fp01';             // 컨트롤러 다이렉트 전송
+
+    nIndex := DeviceList.IndexOf(FillZeroNumber(nEcu,2));
+    if nIndex < 0 then Exit;
+    if (TCurrentDeviceState(DeviceList.Objects[nIndex]).DeviceType <> KTT811) and (TCurrentDeviceState(DeviceList.Objects[nIndex]).DeviceType <> KTT813) then
+    begin
+      showmessage('KTT811 시스템이 아닙니다..');
+      Exit;
+    end;
+    if (copy(TCurrentDeviceState(DeviceList.Objects[nIndex]).DeviceCode,1,7) = 'MCU-110') OR (copy(TCurrentDeviceState(DeviceList.Objects[nIndex]).DeviceCode,1,7) = 'ECU-110')  then
+    begin
+      if aFI.DEVICETYPE <> 'MCU110' then
+      begin
+        showmessage('MCU-300 펌웨어 파일이 아닙니다.');
+        Exit;
+      end;
+      stData := stData + 'mMCU110';
+    end else
+    begin
+      if aFI.DEVICETYPE = 'MCU110' then
+      begin
+        showmessage('MCU-100 펌웨어 파일이 아닙니다.');
+        Exit;
+      end;
+    end;
+  end;
+  
+  L_bIsDownLoad := True;
+  ListBox_DownLoadInfo.Clear;
+  Write_ListBox_DownLoadInfo('FTP 펌웨어 업그레이드 시작');
+  Write_ListBox_DownLoadInfo('펌웨어 버젼:' + aFI.Version);
+
+  btnFirmwareUpdate.Enabled := False;
+  btn_FirmwareCancel.Enabled := True;
+  btn_FileSearch.Enabled := False;
+  btn_FirmWareChange.Enabled := False;
+  btnClose.Enabled := False;
+  
+ // if nEcu = 0 then  stData := 'fp10' //브로드캐스트
+ // else stData := 'fp01';             //컨트롤러 다이렉트 전송
+  
+  stData := stData + '0'; //모니터링 안함'0'
+  stData := stData + '1'; //게이지 출력 '1'
+  stData := stData + 'pc' + ' ' + Trim(ed_pcip.Text);
+  stData := stData + ' ' + Trim(ed_pcPort.Text);
+  stData := stData + ' zregFW' ;//+ ed_ftplocaluser.Text;
+  stData := stData + ' zregpw' ;
+  stData := stData + ' ' + L_stftpsendfilename;
+  stData := stData + ' ' + L_stftpsendfilesize;
+
+  if nEcu = 99 then stData := stData + ' ' + st811ControlerNum;
+
+  IdFTPServer.DefaultPort := strtoint(ed_pcPort.Text);
+
+  if IdFTPServer.Active = False then  IdFTPServer.Active := true;
+
+  L_bBroadCaset := False;
+  if nEcu = 0 then
+  begin
+    L_stSelectEcuID := FillZeroNumber(0,2);
+    L_bBroadCaset := True;
+  end else L_stSelectEcuID := FillZeroNumber(nEcu,2);
+  dmSocket.DirectSendPacket(L_stSelectEcuID,'R',stData);
+
+end;
+
+procedure TfmFTPFirmware.Write_ListBox_DownLoadInfo(aData: String);
+var
+  st: string;
+begin
+  st:= FormatDatetime('hh":"nn":"ss',Now) +'  '+aData;
+  ListBox_DownLoadInfo.Add(st);
+  ListBox_DownLoadInfo.ItemIndex:= ListBox_DownLoadInfo.Items.Count - 1;
+  ListBox_DownLoadInfo.Selected[ListBox_DownLoadInfo.Items.Count - 1] := True;
+
+end;
+
+procedure TfmFTPFirmware.FormShow(Sender: TObject);
+var
+  i : integer;
+  ini_fun : TiniFile;
+begin
+  ed_pcip.Text := Get_Local_IPAddr;
+  fmMain.L_bFTPFirmWareSendShow := True;
+  ini_fun := TiniFile.Create(ExtractFileDir(Application.ExeName) + '\ztcs.INI');
+  ed_FirmwareFile.Text := ini_fun.ReadString('FirmWare','FileName','');
+  ini_fun.Free;
+  if FileExists(ed_FirmwareFile.Text) then FileLoad(ed_FirmwareFile.Text);
+  Ecu_GroupCreate;
+end;
+
+procedure TfmFTPFirmware.FirmwareProcess(aEcuID,aPacketData: string);
+var
+  aRegCode: String;
+begin
+  //FI:Flash Memory Map
+  //FP:Flash Writer File Name
+  //FD:Flash Data File Name
+  //FX:Flash Start Command
+
+  aRegCode:= Copy(aPacketData,G_nIDLength + 12,2);
+
+  if aRegCode = 'FI' then
+  begin
+    L_bIsDownLoad:= True;
+    Write_ListBox_DownLoadInfo('펌웨어 업그레이드정보 응답');
+  end else if aRegCode = 'FP' then
+  begin
+    Write_ListBox_DownLoadInfo('flash write program 응답');
+  end else if aRegCode = 'FD' then
+  begin
+    Write_ListBox_DownLoadInfo('flash Data program 응답');
+  end else if aRegCode = 'FX' then
+  begin
+    Write_ListBox_DownLoadInfo('flash exec data 요청 응답');
+  end else  if aRegCode = 'FU' then
+  begin
+
+  end else
+  begin
+
+  end;
+end;
+
+procedure TfmFTPFirmware.FirmwareProcess2(aEcuID,aPacketData: string);
+var
+  aRegCode: String;
+  Addrstr: String;
+  Addr: Integer;
+  stSeq : string;
+begin
+
+//  aDeviceID:= Copy(aPacketData,8,G_nIDLength + 2);
+  aRegCode:= Copy(aPacketData,G_nIDLength + 12,2);
+
+  if aRegCode = 'fu' then           {버젼정보 확인}
+  begin
+    if (aFI.Version <> '' ) then
+    begin
+      ListBox_DownLoadInfo.Clear;
+      Write_ListBox_DownLoadInfo('펌웨어 업그레이드정보 전송');
+      Write_ListBox_DownLoadInfo('펌웨어 버젼:' + aFI.Version);
+      L_bIsDownLoad:= True;
+    end;
+
+  end else if aRegCode = 'fi' then  {Flash Memory Map 전송}
+  begin
+
+    if aFI.FMM <> '' then
+    begin
+      DownloadFMM(aEcuID);
+    end else
+    begin
+      ShowMessage('메모리맵 데이터가 없습니다.');
+      SendCancelRomUpDate(aEcuID);
+      Exit;
+    end;
+
+  end else if aRegCode = 'fp' then  { flash write program}
+  begin
+    Addrstr:= Copy(aPacketData,G_nIDLength + 16,7);
+    Addr:= Strtoint(Addrstr);
+    if Length(aPacketData) < (G_nIDLength + 27) then stSeq := '0000'
+    else stSeq := copy(aPacketData,G_nIDLength + 24,4);
+
+    if stSeq = '0000' then
+    begin
+      ProgressBar1.Progress:= Addr;
+      ProgressBar1.MaxValue:= ROM_FlashWrite.Count;
+      SendFPData(aEcuID,Addr,'M');
+    end else
+    begin
+      ProgressBar1.Progress:= Addr * strToint(stSeq);
+      ProgressBar1.MaxValue:= Length(ROM_BineryFlashWrite);
+      SendFPBineryData(aEcuID,Addr,strtoint(stSeq),'M');
+    end;
+
+
+  end else if aRegCode = 'fd' then  {flash data program}
+  begin
+    Addrstr:= Copy(aPacketData,G_nIDLength + 16,G_nIDLength);
+    Addr:= Strtoint(Addrstr);
+    if Length(aPacketData) < (G_nIDLength + 28) then stSeq := '0000'
+    else stSeq := copy(aPacketData,(G_nIDLength + 24),4);
+    if stSeq = '0000' then
+    begin
+      ProgressBar1.Progress:= Addr;
+      ProgressBar1.MaxValue:= ROM_FlashData.Count;
+      SendFDData(aEcuID,Addr,'M');
+    end else
+    begin
+      ProgressBar1.Progress:= Addr * strToint(stSeq);
+      ProgressBar1.MaxValue:= Length(ROM_BineryFlashData);
+      SendFDBineryData(aEcuID,Addr,strtoint(stSeq),'M');
+
+    end;
+
+
+  end else if aRegCode = 'fx' then  {Upgrade flash exec command request}
+  begin
+    SendFSC(aEcuID);
+  end;
+
+end;
+
+procedure TfmFTPFirmware.DownloadFMM(aEcuID: string);
+var
+  I: Integer;
+  CMD: string;
+  stTemp: string;
+  aLength: Integer;
+//SYMFDST052S123455F00005F0000FF00005C0000F80000FF0000
+begin
+  CMD:= 'FI00';
+
+  stTemp := CMD + aFI.FMM ;
+
+  if aFI.FMM = '' then
+  begin
+    ShowMessage('데이터 없음');
+    Exit;
+  end;
+
+  dmSocket.DirectSendPacket(aEcuID,'F', stTemp);
+  Write_ListBox_DownLoadInfo('Flash Memory Map 전송');
+
+end;
+
+procedure TfmFTPFirmware.SendCancelRomUpDate(aEcuID: String);
+var
+  CMD: string;
+  stTemp: string;
+  i : integer;
+begin
+  CMD:= 'FU00';
+  stTemp:= CMD +'0000000'+','+ '0000000';
+  dmSocket.DirectSendPacket(aEcuID,'F', stTemp);
+  Write_ListBox_DownLoadInfo(' firmware upgrade 취소 전송');
+
+end;
+
+procedure TfmFTPFirmware.SendFPData(aEcuID: String; aNo: Integer;
+  aMode: string);
+var
+  aData:String;
+  st: String;
+begin
+  if ROM_FlashWrite.Count < 1 then
+  begin
+    if MessageDlg('전송할 데이터가 없습니다.'+
+                  '['+InttoStr(aNo)+']/'+ InttoStr(ROM_FlashWrite.Count)
+                  +#13+'취소 하시겠습니까?',
+    mtConfirmation, [mbYes, mbNo], 0) = mrYes then
+    SendCancelRomUpDate(aEcuID);
+    Exit;
+  end;
+
+  if aNo = 0 then
+  begin
+    ShowMessage('flash write 요청번지가 0 입니다.');
+    Exit;
+  end;
+
+  if aNo <= ROM_FlashWrite.Count then
+  begin
+    aData:= ROM_FlashWrite[aNo-1];
+    if aMode = 'M' then st:= 'fP00'+FillZeroNumber(aNo,7)+aData
+    else if aMode = 'S' then st:= 'FP00'+aData;
+    dmSocket.DirectSendPacket(aEcuID,'F',st);
+    Write_ListBox_DownLoadInfo('flash write 전송:'+InttoStr(aNo));
+  end else
+  begin
+    if MessageDlg('요청된 번지가 잘못되었거나 write 파일에 문제가 있습니다.'+
+                  '['+InttoStr(aNo)+']/'+ InttoStr(ROM_FlashWrite.Count)
+                  +#13+'취소 하시겠습니까?',
+    mtConfirmation, [mbYes, mbNo], 0) = mrYes then
+    SendCancelRomUpDate(aEcuID);
+  end;
+end;
+
+procedure TfmFTPFirmware.SendFPBineryData(aEcuID: String; aNo,
+  aSize: Integer; aMode: string);
+var
+  st: String;
+  iFileLength: Integer;
+  bSendData : Boolean;
+  stSendData : string;
+begin
+  if aNo = 0 then
+  begin
+    ShowMessage('flash write 요청번지가 0 입니다.');
+    Exit;
+  end;
+
+  if ROM_BineryFlashWrite = nil then
+  begin
+    st:= 'fP00' +FillZeroNumber(0,7);
+    dmSocket.DirectSendPacket(aEcuID,'F',st);
+    ShowMessage('전송 가능한 flash write 가 없습니다.');
+    Exit;
+  end;
+
+  bSendData := False;
+  iFileLength := length(ROM_BineryFlashWrite);
+  if iFileLength > 0 then
+  begin
+    //요청 데이터가 끝난 시점인지...체크
+    if iFileLength < ((aNo - 1) * aSize) then
+    begin
+      bSendData := False;
+    end
+    else
+    begin
+      //여기에서 데이터 셋팅
+      bSendData := True;
+      if (aNo * aSize) < iFileLength then
+      begin
+        stSendData := copy(ROM_BineryFlashWrite,((aNo - 1) * aSize) + 1,aSize);
+      end
+      else
+      begin
+        stSendData := copy(ROM_BineryFlashWrite,((aNo - 1) * aSize) + 1,iFileLength -((aNo - 1) * aSize));
+      end;
+      //RzFieldStatus1.Caption := inttostr(length(stSendData)) + ':' + stSendData;
+    end;
+  end;
+  if Not bSendData then
+  begin
+    //보낼 데이터가 없음
+    if aMode = 'M' then st:= 'fP00' +FillZeroNumber(0,7)
+    else if aMode = 'S' then st:= 'fP00';
+    dmSocket.DirectSendPacket(aEcuID,'F',st);
+    Write_ListBox_DownLoadInfo('flash write 전송:'+InttoStr(aNo));
+  end
+  else
+  begin
+    //데이터송신
+    if aMode = 'M' then st:= 'fP00' +FillZeroNumber(aNo,7)+ stSendData
+    else if aMode = 'S' then  st:= 'fP00' + stSendData;
+    dmSocket.DirectSendPacket(aEcuID,'F',st);
+    Write_ListBox_DownLoadInfo('flash write 전송:'+InttoStr(aNo));
+  end;
+
+end;
+
+procedure TfmFTPFirmware.SendFDData(aEcuID: String; aNo: Integer;
+  aMode: string);
+var
+  aData:String;
+  st: String;
+begin
+  if ROM_FlashData.Count < 1 then
+  begin
+    if MessageDlg('전송할 데이터가 없습니다.'+
+                  '['+InttoStr(aNo)+']/'+ InttoStr(ROM_FlashWrite.Count)
+                  +#13+'취소 하시겠습니까?',
+    mtConfirmation, [mbYes, mbNo], 0) = mrYes then
+    SendCancelRomUpDate(aEcuID);
+    Exit;
+  end;
+
+  if aNo = 0 then
+  begin
+    ShowMessage('flash data 요청번지가 0 입니다.');
+    Exit;
+  end;
+
+  if aNo <= ROM_FlashData.Count then
+  begin
+    aData:= ROM_FlashData[aNo-1];
+    if aMode = 'M' then st:= 'fD00'+FillZeroNumber(aNo,7)+aData
+    else if aMode = 'S' then  st:= 'FD00'+aData;
+    dmsocket.DirectSendPacket(aEcuID,'F',st);
+    Write_ListBox_DownLoadInfo('flash data 전송:'+InttoStr(aNo));
+  end else
+  begin
+    if MessageDlg('요청된 번지가 잘못되었거나 Data 파일에 문제가 있습니다.'+
+                  '['+InttoStr(aNo)+']/'+ InttoStr(ROM_FlashData.Count)
+                  +#13+'취소 하시겠습니까?',
+    mtConfirmation, [mbYes, mbNo], 0) = mrYes then
+    SendCancelRomUpDate(aEcuID);
+  end;
+end;
+
+procedure TfmFTPFirmware.SendFDBineryData(aEcuID: String; aNo,
+  aSize: Integer; aMode: string);
+var
+  st: String;
+  iFileLength: Integer;
+  bSendData : Boolean;
+  stSendData : string;
+begin
+  if aNo = 0 then
+  begin
+    ShowMessage('flash data 요청번지가 0 입니다.');
+    Exit;
+  end;
+  if ROM_BineryFlashData = nil then
+  begin
+    if aMode = 'M' then
+    begin
+      st:= 'fD00' +FillZeroNumber(0,7);
+      dmsocket.DirectSendPacket(aEcuID,'F',st);
+    end;
+    ShowMessage('전송 가능한 flash data 가 없습니다.');
+    Exit;
+  end;
+
+  bSendData := False;
+  iFileLength := length(ROM_BineryFlashData);
+  if iFileLength > 0 then
+  begin
+    //요청 데이터가 끝난 시점인지...체크
+    if iFileLength < ((aNo - 1) * aSize) then
+    begin
+      bSendData := False;
+    end
+    else
+    begin
+      //여기에서 데이터 셋팅
+      bSendData := True;
+      if (aNo * aSize) < iFileLength then
+      begin
+        stSendData := copy(ROM_BineryFlashData,((aNo - 1) * aSize) + 1,aSize);
+      end
+      else
+      begin
+        stSendData := copy(ROM_BineryFlashData,((aNo - 1) * aSize) + 1,iFileLength -((aNo - 1) * aSize));
+      end;
+    end;
+  end;
+  if Not bSendData then
+  begin
+    //보낼 데이터가 없음
+    if aMode = 'M' then   st:= 'fD00' + FillZeroNumber(0,7)
+    else if aMode = 'S' then st:= 'fD00' ;
+    dmsocket.DirectSendPacket(aEcuID,'F',st);
+    Write_ListBox_DownLoadInfo('flash data 전송:'+InttoStr(aNo));
+  end
+  else
+  begin
+    //데이터송신
+    if aMode = 'M' then st:= 'fD00' + FillZeroNumber(aNo,7) + stSendData
+    else if aMode = 'S' then st:= 'fD00' + stSendData;
+    dmsocket.DirectSendPacket(aEcuID,'F',st);
+    Write_ListBox_DownLoadInfo('flash data 전송:'+InttoStr(aNo));
+  end;
+end;
+
+procedure TfmFTPFirmware.SendFSC(aEcuID: string);
+var
+  CMD: string;
+  st,stAdd: string;
+  aLength: Integer;
+  aTime: TDatetime;
+  aData: String;
+  i : integer;
+begin
+
+  Delete(aFI.FSC,9,18);
+  aFI.FSC:= aFI.FSC +#$20+'00/00/00 00:00:00';
+
+  CMD:= 'FX'+aFI.CMDCODE;
+  aData:= CMD + aFI.FSC ;
+
+//  aDeviceID:= Edit_CurrentID.Text + ComboBox_IDNO.Text;
+  dmsocket.DirectSendPacket(aEcuID,'F', aData);
+  Write_ListBox_DownLoadInfo('펌웨어 시작 시간 전송시작');
+  
+  DownLoadComplete;
+end;
+
+procedure TfmFTPFirmware.FormCloseQuery(Sender: TObject;
+  var CanClose: Boolean);
+begin
+  if Not L_bClose then
+    CanClose := False;
+
+end;
+
+procedure TfmFTPFirmware.FileLoad(aFileName: string);
+var
+  iFileLength: Integer;
+  iBytesRead: Integer;
+  iFileHandle: Integer;
+  clFileInfo : TFileInfo;
+  st : string;
+begin
+  Try
+    btnFirmwareUpdate.Enabled := True;
+    clFileInfo := TFileInfo.Create(aFileName);
+    L_stftpsendfilename := clFileInfo.FileName;
+    L_stftpsendfilesize := inttostr(clFileInfo.FileSize);
+    L_stlocalftproot    := clFileInfo.Path;
+    clFileInfo.Destroy;
+    //if Not FTPUSE then
+    //begin
+      LMDIniCtrl2.IniFile:= aFileName;
+      LoadINI_firmwareInfo;
+      st:= aFI.Version + #13+
+           aFI.FMM     + #13+
+           aFI.FSC     + #13+
+           aFI.FWFN    + #13+
+           aFI.FDFN;
+      ROM_FlashWrite.Clear;
+      ROM_FlashWrite.LoadFromFile(L_stlocalftproot + '\' + aFI.FWFN);
+      ROM_FlashData.Clear;
+      ROM_FlashData.LoadFromFile(L_stlocalftproot + '\' + aFI.FDFN);
+      //여기서 첫번째 파일을 읽어 들이자
+      iFileHandle := FileOpen(L_stlocalftproot + '\' + aFI.FWFN, fmOpenRead);
+      iFileLength := FileSeek(iFileHandle,0,2);
+      FileSeek(iFileHandle,0,0);
+
+      ROM_BineryFlashWrite := nil;
+      ROM_BineryFlashWrite := PChar(AllocMem(iFileLength + 1));
+      iBytesRead := FileRead(iFileHandle, ROM_BineryFlashWrite^, iFileLength);
+      FileClose(iFileHandle);
+    
+      //여기서 두번째 파일을 읽어 들이자
+      iFileHandle := FileOpen(L_stlocalftproot + '\' + aFI.FDFN, fmOpenRead);
+      iFileLength := FileSeek(iFileHandle,0,2);
+      FileSeek(iFileHandle,0,0);
+
+      ROM_BineryFlashData := nil;
+      ROM_BineryFlashData := PChar(AllocMem(iFileLength + 1));
+      iBytesRead := FileRead(iFileHandle, ROM_BineryFlashData^, iFileLength);
+
+      FileClose(iFileHandle);
+  Except
+    btnFirmwareUpdate.Enabled := False;
+    ed_FirmwareFile.Text := '';
+  End;
+end;
+
+procedure TfmFTPFirmware.DownLoadComplete;
+begin
+  btnFirmwareUpdate.Enabled := True;
+  btn_FirmwareCancel.Enabled := False;
+  btn_FileSearch.Enabled := True;
+  btnClose.Enabled := True;
+  btn_FirmWareChange.Enabled := True;
+
+  ProgressBar1.Progress := 0;
+
+  L_bIsDownLoad:= False;
+  Write_ListBox_DownLoadInfo('==== FirmWare Download Completed ====' );
+end;
+
+procedure TfmFTPFirmware.ed_pcPortChange(Sender: TObject);
+begin
+  IdFTPServer.Active := False;
+
+end;
+
+procedure TfmFTPFirmware.FTPSERVERStart;
+begin
+
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1ChangeDirectory(
+  ASender: TIdFTPServerThread; var VDirectory: string);
+begin
+  VDirectory := GetNewDirectory( ASender.CurrentDir, VDirectory ) ;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1CommandXCRC(ASender: TIdCommand);
+var
+  s: string;
+begin
+  with TIdFTPServerThread( ASender.Thread ) do
+  begin
+    if Authenticated then
+    begin
+      try
+        s := ProcessPath( CurrentDir, ASender.UnparsedParams ) ;
+        s := TransLatePath( s, TIdFTPServerThread( ASender.Thread ) .HomeDir ) ;
+        ASender.Reply.SetReply( 213, CalculateCRC( s ) ) ;
+      except
+        ASender.Reply.SetReply( 500, 'file error' ) ;
+      end;
+    end;
+  end;
+
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1Connect(AThread: TIdPeerThread);
+begin
+  FTPSockList.AddObject(inttostr(SockNo),AThread);
+  inc(SockNo);
+
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1DeleteFile(
+  ASender: TIdFTPServerThread; const APathname: string);
+begin
+  DeleteFile( pchar( TransLatePath( ASender.CurrentDir + '/' + APathname, ASender.HomeDir ) ) ) ;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1DisConnect(AThread: TIdPeerThread);
+var
+  i : integer;
+begin
+  for i := 0 to FTPSockList.Count - 1 do
+  begin
+    if TIdPeerThread(FTPSockList.Objects[i]) = AThread then
+    begin
+      FTPSockList.Delete(i);
+    end;
+  end;
+  AThread.Data := nil;
+  AThread.Stop;
+  Write_ListBox_DownLoadInfo('==== FTP STOP ====' );
+
+  if L_bBroadCaset then
+  begin
+    Write_ListBox_DownLoadInfo('==== CONTROLER SEND START ====' );
+  end;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1GetFileSize(
+  ASender: TIdFTPServerThread; const AFilename: string;
+  var VFileSize: Int64);
+begin
+  VFileSize := GetSizeOfFile( TransLatePath( AFilename, ASender.HomeDir ) ) ;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1ListDirectory(
+  ASender: TIdFTPServerThread; const APath: string;
+  ADirectoryListing: TIdFTPListItems);
+
+  procedure AddlistItem( aDirectoryListing: TIdFTPListItems; Filename: string; ItemType: TIdDirItemType; size: int64; date: tdatetime ) ;
+  var
+    listitem: TIdFTPListItem;
+  begin
+    listitem := aDirectoryListing.Add;
+    listitem.ItemType := ItemType;
+    listitem.FileName := Filename;
+    listitem.OwnerName := 'anonymous';
+    listitem.GroupName := 'all';
+    listitem.OwnerPermissions := '---';
+    listitem.GroupPermissions := '---';
+    listitem.UserPermissions := '---';
+    listitem.Size := size;
+    listitem.ModifiedDate := date;
+  end;
+
+var
+  f: tsearchrec;
+  a: integer;
+begin
+  ADirectoryListing.DirectoryName := apath;
+
+  a := FindFirst( TransLatePath( apath, ASender.HomeDir ) + '*.*', faAnyFile, f ) ;
+  while ( a = 0 ) do
+  begin
+    if ( f.Attr and faDirectory > 0 ) then
+      AddlistItem( ADirectoryListing, f.Name, ditDirectory, f.size, FileDateToDateTime( f.Time ) )
+    else
+      AddlistItem( ADirectoryListing, f.Name, ditFile, f.size, FileDateToDateTime( f.Time ) ) ;
+    a := FindNext( f ) ;
+  end;
+
+  FindClose( f ) ;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1MakeDirectory(
+  ASender: TIdFTPServerThread; var VDirectory: string);
+begin
+  MkDir( TransLatePath( VDirectory, ASender.HomeDir ) ) ;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1RemoveDirectory(
+  ASender: TIdFTPServerThread; var VDirectory: string);
+begin
+  RmDir( TransLatePath( VDirectory, ASender.HomeDir ) ) ;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1RenameFile(
+  ASender: TIdFTPServerThread; const ARenameFromFile,
+  ARenameToFile: string);
+begin
+  if not MoveFile( pchar( TransLatePath( ARenameFromFile, ASender.HomeDir ) ) , pchar( TransLatePath( ARenameToFile, ASender.HomeDir ) ) ) then
+    RaiseLastWin32Error;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1RetrieveFile(
+  ASender: TIdFTPServerThread; const AFilename: string;
+  var VStream: TStream);
+begin
+  Write_ListBox_DownLoadInfo('==== FTP SEND FILE Name : ' + AFilename);
+  VStream := TFileStream.create( translatepath( AFilename, ASender.HomeDir ) , fmopenread or fmShareDenyWrite ) ;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1StoreFile(ASender: TIdFTPServerThread;
+  const AFilename: string; AAppend: Boolean; var VStream: TStream);
+begin
+  if FileExists( translatepath( AFilename, ASender.HomeDir ) ) and AAppend then
+  begin
+    VStream := TFileStream.create( translatepath( AFilename, ASender.HomeDir ) , fmOpenWrite or fmShareExclusive ) ;
+    VStream.Seek( 0, soFromEnd ) ;
+  end
+  else
+    VStream := TFileStream.create( translatepath( AFilename, ASender.HomeDir ) , fmCreate or fmShareExclusive ) ;
+end;
+
+procedure TfmFTPFirmware.IdFTPServer1UserLogin(ASender: TIdFTPServerThread;
+  const AUsername, APassword: string; var AAuthenticated: Boolean);
+var
+  st : string;
+begin
+  AAuthenticated := ( AUsername = 'zregid' ) and ( APassword = 'zregpw' ) ;
+  if not AAuthenticated then
+  begin
+    AAuthenticated := ( AUsername = 'zregFW' ) and ( APassword = 'zregpw' ) ;
+    if not AAuthenticated then
+    begin
+      AAuthenticated := ( AUsername = 'zregBK' ) and ( APassword = 'zregpw' ) ;
+      if not AAuthenticated then  exit;
+    end;
+
+  end;
+  Write_ListBox_DownLoadInfo('==== FTP USER LOGIN ==== ');
+  Write_ListBox_DownLoadInfo('HOMEDIR:' + L_stlocalftproot);
+  ASender.HomeDir := L_stlocalftproot;
+  asender.currentdir := '/';
+
+end;
+
+function TfmFTPFirmware.TransLatePath(const APathname,
+  homeDir: string): string;
+var
+  tmppath: string;
+begin
+  result := SlashToBackSlash( homeDir ) ;
+  tmppath := SlashToBackSlash( APathname ) ;
+  if homedir = '/' then
+  begin
+    result := tmppath;
+    exit;
+  end;
+
+  if length( APathname ) = 0 then
+    exit;
+  if result[length( result ) ] = '\' then
+    result := copy( result, 1, length( result ) - 1 ) ;
+  if tmppath[1] <> '\' then
+    result := result + '\';
+  result := result + tmppath;
+end;
+
+procedure TfmFTPFirmware.GageMonitor(aEcuID,aPacketData: string);
+var
+  stGauge : string;
+  nPos : integer;
+  stMax,stPrograss:string;
+  stEcuID : string;
+  FirmWareGauge : TGauge;
+  FirmWareLabel : TLabel;
+  nPosCount : integer;
+  nStartPos : integer;
+  nEndPos : integer;
+begin
+  //if Not chk_Gauge.Checked then Exit;
+  //048 K1000000000#UGc01     168550/495530 (34)76
+  stEcuID := copy(aPacketData,15,2);
+
+  nPosCount := posCount(' ',aPacketData);
+  nStartPos := PosIndex(' ',aPacketData,nPosCount - 1);
+  nEndPos := PosIndex(' ',aPacketData,nPosCount);
+  stGauge := copy(aPacketData,nStartPos + 1,nEndPos - nStartPos - 1);
+
+  stPrograss := FindCharCopy(stGauge,0,'/');
+  stMax := FindCharCopy(stGauge,1,'/');
+  stMax := FindCharCopy(stMax,0,' ');
+
+  ProgressBar1.MaxValue := strtoint(stMax);
+  ProgressBar1.Progress := strtoint(stPrograss);
+
+  Application.ProcessMessages;
+end;
+
+procedure TfmFTPFirmware.LoadINI_firmwareInfo;
+var
+  st: string;
+begin
+  //GetDir(0,aDir);
+
+  with LMDIniCtrl2 do
+  begin
+    aFI.Version:= ReadString('DOWNLOAD','Version','');
+    aFI.FMM    := ReadString('DOWNLOAD','FMM','');
+
+    st         := ReadString('DOWNLOAD','FSC','');
+    aFI.FSC    := FindCharCopy(st,0,',');
+    aFI.CMDCODE:= FindCharCopy(st,1,',');
+
+    if aFI.CMDCODE = '' then aFI.CMDCODE:= '00';
+
+    aFI.FWFN   := ReadString('DOWNLOAD','FWFN','');
+    aFI.FDFN   := ReadString('DOWNLOAD','FDFN','');
+    aFI.DEVICETYPE := ReadString('DOWNLOAD','DEVI','');
+  end;
+
+end;
+
+procedure TfmFTPFirmware.LoadEcu;
+var
+  i : integer;
+  stSelectEcuID : string;
+begin
+  stSelectEcuID := '';
+  {if cmb_Ecu.Count > 0 then
+    stSelectEcuID := cmb_Ecu.Text;
+  cmb_Ecu.Clear;
+
+  for i :=0 to deviceList.Count - 1 do
+  begin
+    if TCurrentDeviceState(DeviceList.Objects[i]).Connected then
+    begin
+      if TCurrentDeviceState(DeviceList.Objects[i]).DeviceType = KTT811 then
+      begin
+        cmb_Ecu.Add(deviceList.Strings[i]);
+        if stSelectEcuID = deviceList.Strings[i] then
+        begin
+          cmb_Ecu.ItemIndex := cmb_Ecu.Count - 1;
+        end;
+      end;
+    end;
+  end;
+  if cmb_Ecu.ItemIndex < 0 then cmb_Ecu.ItemIndex := 0;
+  L_stSelectEcuID := cmb_Ecu.Text;   }
+end;
+
+procedure TfmFTPFirmware.cmb_EcuChange(Sender: TObject);
+begin
+  //L_stSelectEcuID := cmb_Ecu.Text;
+end;
+
+procedure TfmFTPFirmware.Ecu_GroupCreate;
+var
+  i : integer;
+  nIndex : integer;
+begin
+  Group_811.Items.Clear;
+  for I:= 0 to 63 do
+  begin
+    Group_811.Items.Add(FillZeroNumber(i,2));
+    nIndex := DeviceList.IndexOf(FillZeroNumber(i,2));
+    if nIndex > -1 then
+    begin
+      if TCurrentDeviceState(DeviceList.Objects[nIndex]).DeviceType = KTT811 then
+      begin
+        if TCurrentDeviceState(DeviceList.Objects[nIndex]).Connected then
+        begin
+          Group_811.ItemChecked[i]:= True;
+        end;
+      end;
+    end;
+  end;
+  Group_811.ItemChecked[0]:= True;
+
+end;
+
+function TfmFTPFirmware.Get811ControlerNum(CheckGroup: TRZCheckGroup;
+  var a811ControlerNum: string): integer;
+var
+  nTemp : array[0..8, 0..7] of Integer;
+  i,j,k : Integer;
+  stTemp: String;
+  stHex:String;
+  nDecimal: Integer;
+  FirmWare812Gauge : TGauge;
+  FirmWare812Label : TLabel;
+  nSelectEcu : integer;
+  nSelectCount : integer;
+begin
+  nSelectCount := 0;
+  stHex := '0';
+  for i:=1 to 63 do
+  begin
+    stHex := stHex + '0';
+  end;
+
+  //체크 되어 있는 위치에 데이터를 넣는다.
+  for k:= 0 to 63 do
+  begin
+    if CheckGroup.ItemChecked[k] = True then
+    begin
+      nSelectCount := nSelectCount + 1;
+      nSelectEcu := k;
+      stHex[k+1] := '1';
+    end;
+  end;
+
+  a811ControlerNum := stHex;
+  if nSelectCount = 0 then Result := -1
+  else if nSelectCount = 1 then Result := nSelectEcu
+  else Result := 99;
+end;
+
+procedure TfmFTPFirmware.ProcessKTT811FTPFirmWareDownloadComplete(
+  aEcuID: string);
+begin
+  DownLoadComplete;
+end;
+
+procedure TfmFTPFirmware.Group_811Change(Sender: TObject; Index: Integer;
+  NewState: TCheckBoxState);
+var
+  nIndex : integer;
+begin
+  if NewState = cbUnchecked then Exit;
+  nIndex := DeviceList.IndexOf(FillZeroNumber(Index,2));
+  if nIndex < 0 then
+  begin
+    Group_811.ItemChecked[Index]:= False;
+    showmessage('등록되지 않은 컨트롤러입니다.');
+    Exit;
+  end;
+  if Not TCurrentDeviceState(DeviceList.Objects[nIndex]).Connected then
+  begin
+    Group_811.ItemChecked[Index]:= False;
+    showmessage('해당 컨트롤러는 통신연결 상태가 아닙니다.');
+    Exit;
+  end;
+  if (TCurrentDeviceState(DeviceList.Objects[nIndex]).DeviceType <> KTT811) and (TCurrentDeviceState(DeviceList.Objects[nIndex]).DeviceType <> KTT813) then
+  begin
+    Group_811.ItemChecked[Index]:= False;
+    showmessage('KTT811 컨트롤러가 아닙니다.');
+    Exit;
+  end;
+end;
+
+end.

@@ -1,0 +1,264 @@
+/*
+
+eng_Main_ARM_Mode__ExtMain_ARM_Mode_Exec
+		주장치 경계모드 이행시 등록된 확장기중 경계되어야 하는 확장기를 주장치가 원격으로
+		경계 시키고 모두 경계가 되었을때 주장치가 경계 되록 하는 기능 추가 함.
+		-. 등록 I,EX04######......#####   (0,1,2,3,... 15 까지 확장기 위치, 총 16개)
+		              # = '0' : 해당 확장기 경계와 무관하게 주장치를 경계 할 수 있음.
+		                  '1' : 해당 확장기를 원격경계 시키고 주장치가 카드로 경계 된다.
+		                        단) 원격경계는 확장기 경계 여부와 무관하게 주장치만 경계 됨.
+		-. 참고 : 경계 불가시 음성은 "경계를 할 수 없습니다. 텔레캅 고객센터로 연락 바랍니다."
+		          를 송출하는데, 적절한 음성이 아니므로, 추후 음성을 변경 하여야 함.
+
+
+
+eng_Main_ARM_Mode_able__all_ExtMain_ARM_Mode
+		주장치 경계모드 이행은 등록된 확장기중 경계되어야 하는 확장기가 경계 되었을때만
+		경계가 되록 하는 기능 추가 함.
+		-. 등록 I,EX03######......#####   (0,1,2,3,... 15 까지 확장기 위치, 총 16개)
+		              # = '0' : 해당 확장기 경계와 무관하게 주장치를 경계 할 수 있음.
+		                  '1' : 해당 확장기가 경계되어야 주장치를 카드로 경계 할 수 있음
+		                        단) 원격경계는 확장기 경계 여부와 무관하게 주장치 경계 됨.
+		-. 참고 : 경계 불가시 음성은 "경계를 할 수 없습니다. 텔레캅 고객센터로 연락 바랍니다."
+		          를 송출하는데, 적절한 음성이 아니므로, 추후 음성을 변경 하여야 함.
+
+
+
+eng_Main_Zone_Sensed__Card_Reader__Voice_Inform_Out (보류)
+		해제모드중에 Zone에서 이상 검출시 설정한 카드리더에서 지정한 음성을 송출하는 기능 추가 함.
+		Zone 마다 송출 음성을 다르게 할 수 있고, Zone의 종류(침입, 설비, 화재...)와 무관하다.
+		
+		등록 : I,fn06*##nn##NN##NN....##NN 	<-- Zone 0 부터 8 까지.
+		             *  = 기능 사용/미사용
+		             ## = Card Reader Address BIT (Hex Data, BIT0=1번 Card RD)
+		             NN = 음성 번호               (Hex Data)
+
+
+
+eng_Change_Alarm__Mode__Relay__to__2nd_Door_Lock_Relay
+		출입문 2번은 사용/미사용으로 등록 변경 할 수 있다.
+		Alarm Relay 또는 Mode Relay를 2번 문 Lock Relay로 등록 변경하여 사용 할 수 있다.
+		
+		등록 : I,DL03*0#000000  ( 1~8번 문의 등록 내용 Flag 이다. 현재는 2번문만 사용 )
+		               # = '0' 2번 문 사용 안 함.
+		                   '1' Alarm Relay를 2번 문 Door Lock relay 로 사용 함.
+		                   '2' Mode  Relay를 2번 문 Door Lock relay 로 사용 함.
+		
+		참고 : 2번 문 사용 시 Loop의 DS2,LS2,EX2 할당 내용
+		       DS2 : Loop 6  (Short = DS Close)
+		       LS2 : Loop 7  (Short = LS Close)
+		       EX2 : Loop 8  (Short = EX Close)
+
+
+
+eng__an_Agreement__Firmware
+		데드볼트 DS 검사시간 등록/조회 기능 추가 함.
+		데드볼트를 잠그고 DS 검사시간 내에 DS Open 발생 시 Lock을 Open하여
+		다시 잠그는 것을 반복하는 기능을 추가 함.
+		
+		     |<--- 3초 --->|<-------   1초   --------->|
+		  ---|----.....----|---------|-- 400 --|-------|--------> t
+		   DS Close      DS Close     DS Open   Lock Open
+		                 Lock Close
+                - 항상검사/설정시간만큼검사
+                   I, DL00dd#
+                      dd : 문번호
+                      # : 0 항상검사,1 옵션수행
+		
+		-. 등록 :
+		    I, DL02dd###
+		           dd : 문번호 01 ~ 08
+		           ### : DS 검사 시간 (100mSEC 단위)
+		                 -. 000 은 본 기능 사용 안함.
+		                 -. 기본 등록은 1초 이다.
+		                 -. 예) 1초 등록이면 010
+		
+		-. 조회 :
+		    Q, DL02dd###
+		           dd : 문번호 01 ~ 08
+		
+		-. 참고 : DS 검출이 400mSEC 이므로, Lock Close후 DS가 Open이 되었다면
+		          400mSEC후에 DS가 Open이 검출로 확정되어 Lock을 Open 한다.
+		          따라서 Lock Close후 600mSEC 이내에 DS가 Open된 것을 감지하여
+		          Lock을 다시 Open하고 Close하여 잠근다.
+		          1초가 경과하면 이 기능은 동작하지 않는다.
+		   주의 : DS 검사 시간이 1초 미만으로 등록시 본 기능이 정상 동작하지
+		          않을 수 있다.
+
+
+
+eng__Area__Alarm_Mode	
+		구역(Area 1~8) 경계/해제 기능 추가 함.
+		-. 구역경계 기능   사용시 SYSTEM_AREA (0)는 구역 1로 한다. (기존 기기에 적용시)
+		-. 구역경계 기능 미사용시 구역 1~8은 SYSTEM_AREA (0)로 사용한다.
+		-. 구역경계 기능   사용시 Card 에서 SYSTEM_AREA (0)는 구역 1~8로 한다. (기존 기기에 적용시)
+		-. 구역 변수를 갖는 항목 : Loop, Door, Card Reader, Card, ExtLoop 이다.
+		-. Door에도 Area등록이 필요한 이유 :
+		   카드리더가 문 없음(방범전용)으로 지정되어 있을때 경계가 되면
+		   카드리더와 같은 구역의 문들이 잠기게 되므로 문에 구역이 필요함.
+		-. 해제에서 확인버튼을 계속 누르면 구역경계 사용시 삐삐음과 함께
+		   카드리더의 Loop Led에 카드리더에서 사용중인 구역번호가 표시되고,
+		   버튼을 누를 때마다 해당구역의 Loop, 해당구역의 Loop가 있는 감지기 확장기 번호,
+		   해당구역의 Door가 있는 Door 번호가 표시되고, 삐삐삐삐삐음으로 종료한다.
+		-. 해제에서 확인버튼을 계속 누르면 구역경계 미사용시 삐삐삐삐삐음을 송출한다.
+		-. 카드 Event의 승인결과에 Area 다름 Code 인 'G' 추가 함.
+		
+		-. 구역경계 기능이 있는 Firmware 표시 Command. (기기가 수행 할 수 있는 기능들에 대해서 정의)
+		   R, VR90
+		   r, SyFn##
+		   Data : ## (2 BYTE Hex)
+		          BIT5 : 구역경계/해제기능(기능이 있음)
+		
+		-. 구역의 Alarm 현상태 요청 제어 Command
+		   R, rd01abcdefghi
+		      a = 구역 0    ( a = '1' 은 현상태 요청 )
+		      b = 구역 1
+		      i = 구역 8
+		
+		-. 구역경계 사용/미사용 등록 Command
+		   I, fn02#
+		          # : 1 = 사용 / 0 = 미사용
+		
+		-. Door 1~8 구역 등록  Command ( 여기서는 Door 1 만 사용 함 )
+		   I, DL10** ## ## ## ## ## ## ## ##
+		             ## : 구역 1~8
+		
+		-. Card의 구역 및 Door 지정 등록 Command ( 구조는 아래와 같음 )
+		   c, merRRrCCCCCCCCCCYYMMDDrAtnnnnn##$$
+		      BYTE msg_code;                               // 00 m (L/N)
+		      BYTE errorcode;                              // 01 e
+		      BYTE RegCode;                                // 02 r 
+		      BYTE RecCount[2];                            // 03 RR
+		      BYTE Reserved;                               // 05 r 
+		      BYTE AccessCardData[ACCESS_CARDEVENT_SIZE];  // 06 CCCCCCCCCC
+		      BYTE YY[2];                                  // 16 YY
+		      BYTE MM[2];                                  // 18 MM
+		      BYTE DD[2];                                  // 20 DD
+		      BYTE RegResult;                              // 22 r
+		      BYTE CardAuthority;                          // 23 A
+		      BYTE AccessTimeMode;                         // 24 t
+		      BYTE CardIdNo[5];                            // 25 nnnnn
+		      BYTE CardAreaBit[2];                         // 30 ## : Card Area Bit(추가된부분 전체권한 FF)
+		      BYTE CardDoorBit[2];                         // 32 $$ : Card Door Bit(추가된부분 전체권한 FF 1번문만 01)
+		
+		   -. Card Area 1~8은 BIT0~BIT8로 지정하며, Bit0~3 과 Bit4~8로 나누어서
+		      각각을 2BYTE로 만들어 전송한다.
+		      CardAreaBit[0] = 01xx####(0) = Area8~5(H)
+		      CardAreaBit[1] = 01xx####(1) = Area4~1(L)
+		
+		   -. Door 적용 1~8은 BIT0~BIT8로 지정하며, Bit0~3 과 Bit4~8로 나누어서
+		      각각을 2BYTE로 만들어 전송한다.
+		      CardDoorBit[0] = 01xx####(0) = Area8~5(H)
+		      CardDoorBit[1] = 01xx####(1) = Area4~1(L)
+
+
+
+eng__Main_Loop__Ext_Loop__Enable_Disable(미사용)
+		주장치 및 감지기 확장기의 각각의 Loop에 대하여 사용/미사용을 설정하는 기능 추가 함.
+		
+		-. 주장치 Loop 사용/미사용 등록 :         예) Loop3   사용/미사용
+		   I,LP03Q141101111000000001111000000                04000             <--   사용
+		   I,LP03Q141101111000000001111000000                04001             <-- 미사용
+		                                                         ^
+		-. 감지기 확장기 Loop 사용/미사용 등록 :  예) Loop3   사용/미사용
+		   I,EL01011S1000S2000S3000S4000S5000S6000S7000S80000000000000000000   <--   사용
+		   I,EL01011S1000S2000S3000S4000S5000S6000S7000S80000000800000000000   <-- 미사용(?)
+		                                                    aabbccddeeffgghh
+		                 EL01 : Header                          ^^
+		                   xx : ExtLoopNumber,
+		                    * : Install/Uninstall
+		                   SS : Status       ----+
+		                    K : Sense Kind       |
+		                   AN : Area Number  ----+
+		     aabbccddeeffgghh : Loop 1 ~ 8 까지 LoopFlag 2 BYTE String Hex 값 임(복구신호전송유무).
+
+
+
+eng_ExtLoop_Recover_Send
+		감지기 확장기의 Loop 복구시 복구신호를 전송 할 수 있도록 기능 추가 함.
+		I,EL01xx*SSKANSSKANSSKANSSKANSSKANSSKANSSKANSSKANaabbccddeeffgghh
+		  EL01 : Header
+		    xx : ExtLoopNumber,
+		     * : Install/Uninstall
+		    SS : Status       ----+
+		     K : Sense Kind       |
+		    AN : Area Number  ----+
+		    aabbccddeeffgghh : Loop 1 ~ 8 까지 LoopFlag 2 BYTE String Hex 값 임.
+
+
+
+		R,fw91  전송시  R,fw91 #######(cs), $$$$$$$(CS) 에서
+		                R,fw91 $$$$$$$(CS), #######(cs) 로 위치를 바꿈.
+		                $$$$$$$ = Flash ROM Len, ####### = Boot ROM Len
+
+		--------------------------------------------
+			LoopFlag 2 BYTE String Hex
+		--------------------------------------------
+		#define N_RESERVED_B			BIT0
+		#define N_EVERY_STATE_SEND_B           	BIT1		// used but no needs
+		#define N_NORMAL_STATE_SEND_B           BIT2		// 복구 신호 전송
+		#define N_DELAY_TIME_LOOP_B		BIT3
+		#define N_PARTIAL_LOOP_B		BIT4		// 부분 경계 : (KT_IMAGE_CONTROLLER == ON)
+		#define N_VISIT_LOOP_B			BIT5		// 방문 Port : (KT_IMAGE_CONTROLLER == ON)
+		#define N_INSTALL_LOOP_B		BIT6		// 설치 Port : (KT_IMAGE_CONTROLLER == ON)
+		#define N_LOOP_DISABLE_B		BIT7		// On = Loop 기능 상실 (미사용 Loop Flag)
+		--------------------------------------------
+
+
+eng_Flash_Firmware_Upgrade_2
+		Firmware Upgrade시 출입문을 개방하고 하도록 기능 추가 함.
+		Firmware Upgrade하는동안 약 3~5분 동안 출입문이 잠겨 있을 수 있으므로 개방한다.
+		R,fw1001 ################  에서
+		# = '1' 이면 출입문은  현 상태 Firmware Upgrade 한다.
+		# = '2' 이면 출입문은 개방상태 Firmware Upgrade 한다.
+
+
+
+		R,RD00## :
+		  ## = 없으면기존의 R,RD00과 동일 함. 0~MAX_EXT_MAIN 까지 전체 상태를 전송.
+		  ## = 00~MAX_EXT_MAIN 까지 기기를 선택하여 현재 상태를 요청 함.
+		기존의 R,RD00은 0~MAX_EXT_MAIN 까지 전체 상태를 전송하던 것을 개선 함.
+
+
+
+eng_Zeron_CardReader__FingerPrint_CardReader__Mixed_Use
+		Zeron 카드리더와 지문 카드리더를 혼용하여 사용 할 수 있는 기능 추가 함.
+		카드리더로 통신을 하기전에 카드리더의 종류를 확인하여 BAUD를 설정하고 통신함.
+		
+		카드리더의 종류를 지정하는 방법
+		
+		1. 전체 카드리더 지정
+		   I,Ct00#          전체 카드리더 # : 0 (=Zeron 카드리더), 1 (=지문 카드리더)
+		
+		2. 각각 카드리더 지정
+		   I,Ct00_########   1~8 카드리더 # : 0 (=Zeron 카드리더), 1 (=지문 카드리더)
+
+
+
+eng_ExtMain_Tx_Rx__Line_Short_Check
+		ExtMain의 TX, RX 통신 선로가 Short가 되어 있는지 검사 할 수 있도록 함.
+		1) 500mSEC ExtMain 의 통신을 중지.
+		2) "12345"를 전송.
+		3) 500mSEC 경과 후 ExtMain 의 RX Buffer를 확인 함.
+		4) 수신된 것이 없으면 정상, 1 BYTE라도 수신된 것이 있으면 비정상 이다.
+		제어 명령은 R,cs90 이다.
+		정상 결과는 r,cs90 OK
+		이상 결과는 r,cs90 NG #####...##### 이다.   ###...### 는 수신한 Data 이다.
+
+
+
+eng_ARM_Mode__DISARM_Mode__Relay_Control
+		전등제어 Relay가 해제시 ON, 경게시 OFF 일 경우, 해제중 기기에 문제가 발생시
+		모든 전등이 OFF 되는 문제가 예상됨. (Relay는 Power Off시 OPEN Relay 임)
+		따라서 아래와 같이 등록 사용하도록 함, 초기화 기본값은 경계시 Relay ON 으로 함.
+		-. I,fn05A : 경계시 Relay ON 함.  (해제시 Relay OFF 함.)
+		-. I,fn05D : 해제시 Relay ON 함.  (경계시 Relay OFF 함.)
+
+
+2011-07-11	echooff
+	* D:\[ Project ]\[ _Project_ ]\[ CVS ]/ACC-510/Project/ACC-510.BLD/Release/Exe/ACC-510.hex 1.3:
+		V00.01.003, V00.08.011, Jul  9 2011
+		KTT-812 시범운용 실시
+		==========================================================================
+		==========================================================================
+		==========================================================================
